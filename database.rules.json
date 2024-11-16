@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "lists": {
+      ".read": "now < 1734303600000",  // 2024-12-16
+    ".write": "now < 1734303600000",  // 2024-12-16
+      "$listId": {
+        ".read": true,
+        ".write": true,
+        "gifts": {
+          ".read": true,
+          ".write": true
+        }
+      }
+    }
+  }
+}
