@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+
 import { ref, set, get } from 'firebase/database';
 import { db } from './firebase';
 import { GiftList } from './components/GiftList';

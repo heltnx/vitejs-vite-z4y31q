@@ -42,12 +42,13 @@ export const Gift: React.FC<GiftProps> = ({ gift, listId, onDelete }) => {
     }
   };
 
-  const handleStatusUpdate = async (status: 'reserved' | 'purchased', value: any) => {
+  const handleStatusUpdate = async (status: 'reserved' | 'purchased', value: boolean | string) => {
     const updates = {
-      [`/lists/${listId}/gifts/${gift.id}/${status}`]: value
+        [`/lists/${listId}/gifts/${gift.id}/${status}`]: value
     };
     await update(ref(db), updates);
-  };
+};
+
 
   return (
     <div className={`gift-item ${gift.purchased ? 'purchased' : ''}`}>
@@ -74,7 +75,9 @@ export const Gift: React.FC<GiftProps> = ({ gift, listId, onDelete }) => {
           <input
             type="number"
             value={editedGift.price || ''}
-            onChange={(e) => setEditedGift({ ...editedGift, price: parseFloat(e.target.value) || null })}
+            onChange={(e) => setEditedGift({ ...editedGift, price: parseFloat(e.target.value) || undefined })}
+
+
             placeholder="Price (optional)"
           />
           <button onClick={handleUpdate}>Save</button>
@@ -100,7 +103,8 @@ export const Gift: React.FC<GiftProps> = ({ gift, listId, onDelete }) => {
             {!gift.purchased && (
               <>
                 <button
-                  onClick={() => handleStatusUpdate('reserved', gift.reserved ? null : 'RESERVED')}
+                  onClick={() => handleStatusUpdate('reserved', gift.reserved ? false : 'RESERVED')}
+
                   className={gift.reserved ? 'active' : ''}
                 >
                   {gift.reserved ? 'Cancel Reservation' : 'Reserve'}
