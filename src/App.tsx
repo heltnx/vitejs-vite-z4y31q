@@ -1,140 +1,251 @@
 import { useState, useEffect } from 'react';
-
-import { ref, set, get } from 'firebase/database';
+import { ref, get, set, remove } from 'firebase/database';
 import { db } from './firebase';
-import { GiftList } from './components/GiftList';
-import { v4 as uuidv4 } from 'uuid';
 import {
   Box,
   Typography,
+  Collapse,
+  List,
+  ListItem,
+  ListItemText,
+  IconButton,
   Button,
   TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-} from '@mui/icons-material';
+import { ExpandLess, ExpandMore } from '@mui/icons-material';
+import { v4 as uuidv4 } from 'uuid';
+
+// Définition des types pour les cadeaux et les listes
+interface Gift {
+  id: string;
+  name: string;
+  price?: string;
+  url?: string;
+  image?: string;
+  purchased?: boolean;
+}
+
+interface List {
+  id: string;
+  name: string;
+  gifts: Gift[];
+}
 
 function App() {
-  const [lists, setLists] = useState<Array<{ id: string; name: string }>>([]);
-  const [selectedList, setSelectedList] = useState<string | null>(null);
+  const [lists, setLists] = useState<List[]>([]);
+  const [expandedListId, setExpandedListId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newListName, setNewListName] = useState('');
+  const [newGift, setNewGift] = useState<Gift>({
+    id: '',
+    name: '',
+    price: '',
+    url: '',
+    image: '',
+    purchased: false,
+  });
+  const [giftDialogOpen, setGiftDialogOpen] = useState(false);
 
-  useEffect(() => {
-    // Check URL for list parameter
-    const params = new URLSearchParams(window.location.search);
-    const listId = params.get('list');
-    if (listId) {
-      setSelectedList(listId);
+ useEffect(() => {
+  const loadLists = async () => {
+    const snapshot = await get(ref(db, 'lists'));
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      const listsArray: List[] = Object.entries(data).map(([id, list]: [string, any]) => ({
+        id,
+        name: list.name,
+        gifts: list.gifts
+          ? Object.entries(list.gifts).map(([giftId, gift]) => {
+              const typedGift = gift as Gift; // Type assertion
+              return {
+                ...typedGift, // Use the spread first
+                id: giftId,   // Override the `id` explicitly
+              };
+            })
+          : [],
+      }));
+      setLists(listsArray);
     }
+  };
+  loadLists();
+}, []);
 
-    // Load lists from Firebase
-    const loadLists = async () => {
-      const snapshot = await get(ref(db, 'lists'));
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const listsArray = Object.entries(data).map(([id, list]: [string, any]) => ({
-          id,
-          name: list.name,
-        }));
-        setLists(listsArray);
-      }
-    };
 
-    loadLists();
-  }, []);
+  const handleToggleExpand = (listId: string) => {
+    setExpandedListId(expandedListId === listId ? null : listId);
+  };
 
-  const handleCreateList = () => {
-    if (!newListName) return;
-
+  const handleCreateList = async () => {
     const listId = uuidv4();
-    const newList = {
-      id: listId,
-      name: newListName,
-      gifts: [],
-    };
-
-    set(ref(db, `lists/${listId}`), newList);
-    setLists([...lists, { id: listId, name: newListName }]);
+    const newList: List = { id: listId, name: newListName, gifts: [] };
+    await set(ref(db, `lists/${listId}`), newList);
+    setLists([...lists, newList]);
     setNewListName('');
     setDialogOpen(false);
-    setSelectedList(listId);
   };
 
-  const handleDeleteList = (listId: string) => {
-    set(ref(db, `lists/${listId}`), null);
-    setLists(lists.filter(l => l.id !== listId));
-    if (selectedList === listId) {
-      setSelectedList(null);
-    }
-  };
-
-  if (selectedList) {
-    return (
-      <Box>
-        <Button
-          onClick={() => setSelectedList(null)}
-          sx={{ m: 2 }}
-        >
-          ← Retour aux listes
-        </Button>
-        <GiftList listId={selectedList} />
-      </Box>
+  const handleAddGift = async (listId: string) => {
+    const giftId = uuidv4();
+    const newGiftData: Gift = { ...newGift, id: giftId, purchased: false };
+    await set(ref(db, `lists/${listId}/gifts/${giftId}`), newGiftData);
+    setLists((prevLists) =>
+      prevLists.map((list) =>
+        list.id === listId
+          ? { ...list, gifts: [...list.gifts, newGiftData] }
+          : list
+      )
     );
-  }
+    setNewGift({ id: '', name: '', price: '', url: '', image: '', purchased: false });
+    setGiftDialogOpen(false);
+  };
+
+  const handlePurchaseToggle = async (listId: string, gift: Gift) => {
+    const updatedGift: Gift = { ...gift, purchased: !gift.purchased };
+    await set(ref(db, `lists/${listId}/gifts/${gift.id}`), updatedGift);
+    setLists((prevLists) =>
+      prevLists.map((list) =>
+        list.id === listId
+          ? {
+              ...list,
+              gifts: list.gifts.map((g) => (g.id === gift.id ? updatedGift : g)),
+            }
+          : list
+      )
+    );
+  };
+
+  const handleDeleteGift = async (listId: string, giftId: string) => {
+    await remove(ref(db, `lists/${listId}/gifts/${giftId}`));
+    setLists((prevLists) =>
+      prevLists.map((list) =>
+        list.id === listId
+          ? {
+              ...list,
+              gifts: list.gifts.filter((gift) => gift.id !== giftId),
+            }
+          : list
+      )
+    );
+  };
+
 
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', p: 2 }}>
-      <Typography variant="h3" sx={{ mb: 4, color: '#f44336' }}>
+      {/* Header */}
+      <Typography variant="h3" sx={{ mb: 4, color: '#f44336', textAlign: 'center' }}>
         Ma Liste de Noël
       </Typography>
 
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        Mes Listes
-      </Typography>
+      {/* Bouton pour créer une nouvelle liste */}
+      <Box sx={{ textAlign: 'center', mb: 4 }}>
+        <Button variant="contained" onClick={() => setDialogOpen(true)}>
+          Ajouter une liste
+        </Button>
+      </Box>
 
+      {/* Liste des listes */}
       <List>
         {lists.map((list) => (
-          <ListItem
-            key={list.id}
-            button
-            onClick={() => setSelectedList(list.id)}
-          >
-            <ListItemText primary={`Liste de ${list.name}`} />
-            <ListItemSecondaryAction>
-              <IconButton
-                edge="end"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteList(list.id);
-                }}
-              >
-                <DeleteIcon />
+          <Box key={list.id} sx={{ mb: 2 }}>
+            <ListItem
+              sx={{
+                background: 'linear-gradient(to right, #f5f5f5, #e0e0e0)',
+                borderRadius: 2,
+                boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.1)',
+                px: 2,
+              }}
+              button
+              onClick={() => handleToggleExpand(list.id)}
+            >
+              <ListItemText
+                primary={list.name}
+                sx={{ fontWeight: 'bold', textAlign: 'center', color: '#333' }}
+              />
+              <IconButton>
+                {expandedListId === list.id ? <ExpandLess /> : <ExpandMore />}
               </IconButton>
-            </ListItemSecondaryAction>
-          </ListItem>
+            </ListItem>
+
+            {/* Cadeaux de la liste */}
+            <Collapse in={expandedListId === list.id} timeout="auto" unmountOnExit>
+              <Box sx={{ mt: 1, p: 2, border: '1px solid #ddd', borderRadius: 2, background: '#fff' }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Cadeaux demandés
+                </Typography>
+                {list.gifts.length > 0 ? (
+                  list.gifts.map((gift) => (
+                    <Box
+                      key={gift.id}
+                      sx={{
+                        mb: 2,
+                        p: 2,
+                        border: '1px solid #ccc',
+                        borderRadius: 2,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                      }}
+                    >
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        {gift.name || 'Cadeau sans nom'}
+                      </Typography>
+                      <Typography variant="body2">
+                        Prix estimé : {gift.price ? `${gift.price} €` : 'Non défini'}
+                      </Typography>
+                      {gift.url && (
+                        <Typography variant="body2">
+                          Lien :{' '}
+                          <a href={gift.url} target="_blank" rel="noopener noreferrer">
+                            {gift.url}
+                          </a>
+                        </Typography>
+                      )}
+                      {gift.image && (
+                        <Box sx={{ mt: 1 }}>
+                          <img src={gift.image} alt="Cadeau" style={{ maxWidth: '100%' }} />
+                        </Box>
+                      )}
+                      <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                        <Button
+                          variant="contained"
+                          color={gift.purchased ? 'success' : 'primary'}
+                          onClick={() => handlePurchaseToggle(list.id, gift)}
+                        >
+                          {gift.purchased ? 'Acheté ✅' : 'Acheter'}
+                        </Button>
+                        <Button
+                          variant="contained"
+                          color="error"
+                          onClick={() => handleDeleteGift(list.id, gift.id)}
+                        >
+                          Supprimer
+                        </Button>
+                      </Box>
+                    </Box>
+                  ))
+                ) : (
+                  <Typography variant="body2">Aucun cadeau pour cette liste.</Typography>
+                )}
+                <Box sx={{ textAlign: 'center', mt: 2 }}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setGiftDialogOpen(true);
+                      setExpandedListId(list.id);
+                    }}
+                  >
+                    Ajouter un cadeau
+                  </Button>
+                </Box>
+              </Box>
+            </Collapse>
+          </Box>
         ))}
       </List>
 
-      <Button
-        startIcon={<AddIcon />}
-        variant="contained"
-        onClick={() => setDialogOpen(true)}
-        sx={{ mt: 2 }}
-      >
-        Créer une nouvelle liste
-      </Button>
-
+      {/* Dialog pour créer une nouvelle liste */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
         <DialogTitle>Créer une nouvelle liste</DialogTitle>
         <DialogContent>
@@ -151,6 +262,49 @@ function App() {
           <Button onClick={() => setDialogOpen(false)}>Annuler</Button>
           <Button onClick={handleCreateList} variant="contained">
             Créer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog pour ajouter un cadeau */}
+      <Dialog open={giftDialogOpen} onClose={() => setGiftDialogOpen(false)}>
+        <DialogTitle>Ajouter un cadeau</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Nom du cadeau"
+            fullWidth
+            value={newGift.name}
+            onChange={(e) => setNewGift({ ...newGift, name: e.target.value })}
+          />
+          <TextField
+            margin="dense"
+            label="Prix estimé (€)"
+            fullWidth
+            type="number"
+            value={newGift.price}
+            onChange={(e) => setNewGift({ ...newGift, price: e.target.value })}
+          />
+          <TextField
+            margin="dense"
+            label="Lien URL"
+            fullWidth
+            value={newGift.url}
+            onChange={(e) => setNewGift({ ...newGift, url: e.target.value })}
+          />
+          <TextField
+            margin="dense"
+            label="Lien de l'image"
+            fullWidth
+            value={newGift.image}
+            onChange={(e) => setNewGift({ ...newGift, image: e.target.value })}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGiftDialogOpen(false)}>Annuler</Button>
+          <Button onClick={() => handleAddGift(expandedListId!)} variant="contained">
+            Ajouter
           </Button>
         </DialogActions>
       </Dialog>
