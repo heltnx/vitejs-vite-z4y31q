@@ -143,16 +143,26 @@ function App() {
       purchaser: purchaserName,
     };
     await update(ref(db, `lists/${listId}/gifts/${gift.id}`), updatedGift);
+
     setLists((prevLists) =>
       prevLists.map((list) =>
         list.id === listId
           ? {
               ...list,
-              gifts: list.gifts.map((g) => (g.id === gift.id ? updatedGift : g)),
+              gifts: list.gifts.map((g) =>
+                g.id === gift.id
+                  ? {
+                      ...g,
+                      purchased: updatedGift.purchased,
+                      purchaser: updatedGift.purchaser,
+                    } as Gift // Assure que le type reste cohérent
+                  : g
+              ),
             }
           : list
       )
     );
+    
   };
 
 
